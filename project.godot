@@ -63,7 +63,7 @@ _global_script_class_icons={
 [application]
 
 config/name="Cubi's Adventure"
-run/main_scene="res://Actors/Player/Player.tscn"
+run/main_scene="res://Stages/Test/TestStage.tscn"
 config/icon="res://icon.png"
 
 [importer_defaults]

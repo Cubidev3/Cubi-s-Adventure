@@ -7,28 +7,40 @@ var velocity = Vector2.ZERO
 var direction = 1
 var jump = false
 
-# Horizontal movoment
+# Horizontal Grounded movement
 export var horizontal_distance_per_second = 10 * 128
 export var start_speed_percent = 0.2
-var max_speed = 400
-var start_speed = 100
-export var time_to_max_speed = 0.24
-export var time_to_stop = 0.16
-export var time_to_turn_around = 0.06
-var acceleration = max_speed / time_to_max_speed
-var deceleration = max_speed / time_to_stop
-var turn_around_acceleration = max_speed / time_to_turn_around
+export var horizontal_distance_traveled_while_accelerating_to_max_speed = 128
+export var horizontal_distance_traveled_while_decelerating_to_zero_speed = 96
+export var horizontal_distance_traveled_while_trying_to_turn_around = 48
+
+var max_speed = 0
+var start_speed = 0
+var acceleration = 0
+var deceleration = 0
+var turn_around_deceleration = 0
 var is_inert = true
+
+# Horizontal Aerial Movement
+export var horizontal_distance_traveled_on_air_while_accelerating_to_max_speed = 160
+export var horizontal_distance_traveled_on_air_while_decelerating_to_zero_speed = 224
+export var horizontal_distance_traveled_on_air_while_trying_to_turn_around = 80
+
+var air_acceleration = 0
+var air_deceleration = 0
+var air_turn_around_deceleration = 0
 
 # Jump
 export var jump_heigth = 300
-export var horizontal_distance_going_up = 4 * 128
-export var horizontal_distance_going_down = 3 * 128
+export var horizontal_distance_going_up = 512
+export var horizontal_distance_going_down = 320
 export var max_fall_speed = 750
+
 var jump_force = 0
 var normal_gravity = 0
 var fall_gravity = 0
 var low_jump_gravity = 0
+
 var is_on_ground = false
 var started_fast_fall = false
 
@@ -36,9 +48,13 @@ func _ready():
 	max_speed = horizontal_distance_per_second
 	start_speed = max_speed * start_speed_percent
 	
-	acceleration = max_speed / time_to_max_speed
-	deceleration = max_speed / time_to_stop
-	turn_around_acceleration = max_speed / time_to_turn_around
+	acceleration = (max_speed * max_speed) / (2 * horizontal_distance_traveled_while_accelerating_to_max_speed)
+	deceleration = (max_speed * max_speed) / (2 * horizontal_distance_traveled_while_decelerating_to_zero_speed)
+	turn_around_deceleration = (max_speed * max_speed) / (2 * horizontal_distance_traveled_while_trying_to_turn_around)
+	
+	air_acceleration = (max_speed * max_speed) / (2 * horizontal_distance_traveled_on_air_while_accelerating_to_max_speed)
+	air_deceleration = (max_speed * max_speed) / (2 * horizontal_distance_traveled_on_air_while_decelerating_to_zero_speed)
+	air_turn_around_deceleration = (max_speed * max_speed) / (2 * horizontal_distance_traveled_on_air_while_trying_to_turn_around)
 	
 	jump_force = (2 * jump_heigth * max_speed) / horizontal_distance_going_up
 	normal_gravity = (jump_force * max_speed) / horizontal_distance_going_up
@@ -49,11 +65,17 @@ func update_input():
 	direction = sign(Input.get_action_strength("right") - Input.get_action_strength("left"))
 	jump = Input.is_action_pressed("jump")
 
-func move(delta):
+func move(delta: float):
 	if direction != 0 or is_turning_around():
 		accelerate(delta)
 	else:
 		decelerate(delta)
+		
+func air_move(delta: float):
+	if direction != 0 or is_turning_around():
+		air_accelerate(delta)
+	else:
+		air_decelerate(delta)
 
 func accelerate(delta: float) -> void:
 	if is_inert:
@@ -62,7 +84,15 @@ func accelerate(delta: float) -> void:
 	
 	var velocity_to_add = acceleration * direction * delta
 	if is_turning_around():
-		velocity_to_add = turn_around_acceleration * direction * delta
+		velocity_to_add = turn_around_deceleration * direction * delta
+		
+	velocity.x += velocity_to_add
+	velocity.x = clamp(velocity.x, -max_speed, max_speed)
+	
+func air_accelerate(delta: float) -> void:
+	var velocity_to_add = air_acceleration * direction * delta
+	if is_turning_around():
+		velocity_to_add = air_turn_around_deceleration * direction * delta
 		
 	velocity.x += velocity_to_add
 	velocity.x = clamp(velocity.x, -max_speed, max_speed)
@@ -76,6 +106,15 @@ func decelerate(delta: float) -> void:
 	if (velocity.x == 0 or (old_velocity_direction + sign(velocity.x) == 0)):
 		velocity.x = 0
 		is_inert = true
+		
+func air_decelerate(delta: float) -> void:
+	var velocity_to_add = air_deceleration * sign(-velocity.x) * delta
+	
+	var old_velocity_direction = sign(velocity.x)
+	velocity.x += velocity_to_add
+	
+	if (velocity.x == 0 or (old_velocity_direction + sign(velocity.x) == 0)):
+		velocity.x = 0
 	
 func is_turning_around() -> bool:
 	return sign(velocity.x) + direction == 0 and not is_inert
