@@ -19,14 +19,15 @@ func _physics_update(delta: float):
 		state_machine.transition_to("Grounded")
 		return
 		
-	var wall_normal = player.get_wall_normal()
+	var wall_normal = player.get_wall_normal(player.wall_distance_tolerance)
 	if player.check_for_walljump(wall_normal):
 		player.walljump(wall_normal)
 		state_machine.transition_to("WalljumpUp")
 		return
 		
 	if player.is_on_wall():
-		player.velocity.x = 0
+		state_machine.transition_to("Wallslide")
+		return
 
 func _exit():
 	player.is_inert = false

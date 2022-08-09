@@ -32,7 +32,6 @@ func transition_to(state_name: String):
 	state._exit()
 	state = new_state
 	emit_signal("transitioned", state_name)
-	print(state_name)
 	state._enter()
 
 func get_state(state_name) -> State:

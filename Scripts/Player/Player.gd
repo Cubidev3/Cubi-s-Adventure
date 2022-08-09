@@ -68,8 +68,7 @@ onready var jumpBuffer = $JumpBuffer
 onready var coyoteTime = $CoyoteTime
 
 # Wall Jump
-onready var walljump_start_timer: Timer = $WalljumpStartTimer
-
+export var wall_distance_tolerance = 16
 export var walljump_max_speed = 1024
 export var min_walljump_horizontal_distance = 320
 export var walljump_heigth = 320
@@ -77,12 +76,20 @@ export var min_walljump_heigth = 128
 export var walljump_horizontal_distance_going_up = 448
 export var walljump_horizontal_distance_going_down = 288
 
-var start_walljump_speed = 0
+var last_wall_normal = Vector2.ZERO
 var walljump_force = 0
 var walljump_normal_gravity = 0
 var walljump_fall_gravity = 0
 var low_walljump_gravity = 0
-var time_to_min_wall_jump = 0
+var walljump_turn_around_deceleration = 0
+
+# Wall Slide
+onready var wall_coyote_time_timer = $WallCoyoteTime
+
+export var max_wallslide_speed = 1024
+export var distance_travelled_while_accelerating = 192
+
+var wallslide_acceleration = 0
 
 func _ready():
 	max_speed = horizontal_distance_per_second
@@ -110,9 +117,9 @@ func _ready():
 	walljump_normal_gravity = (walljump_force * walljump_max_speed) / walljump_horizontal_distance_going_up
 	walljump_fall_gravity = (2 * walljump_heigth * walljump_max_speed * walljump_max_speed) / (walljump_horizontal_distance_going_down * walljump_horizontal_distance_going_down)
 	low_walljump_gravity = (walljump_force * walljump_force) / (2 * min_walljump_heigth)
-	start_walljump_speed = sqrt(2 * air_turn_around_deceleration * min_walljump_horizontal_distance)
+	walljump_turn_around_deceleration = (walljump_max_speed * walljump_max_speed) / (2 * min_walljump_horizontal_distance)
 	
-	time_to_min_wall_jump = (2 * min_walljump_horizontal_distance) / (start_walljump_speed)
+	wallslide_acceleration = (2 * max_wallslide_speed * max_wallslide_speed) / (distance_travelled_while_accelerating)
 
 func update_input():
 	direction = sign(Input.get_action_strength("right") - Input.get_action_strength("left"))
@@ -132,10 +139,17 @@ func air_move(delta: float):
 		air_decelerate(delta)
 		
 func walljump_move(delta: float):
-	if walljump_start_timer.time_left > 0 and direction < 0:
-		direction = 0
+	if direction != 0:
+		walljump_accelerate(delta)
+	else:	
+		air_decelerate(delta)
+	
+func walljump_accelerate(delta: float):
+	var velocity_to_add = air_acceleration * direction * delta
+	if is_turning_around():
+		velocity_to_add = walljump_turn_around_deceleration * direction * delta
 		
-	air_move(delta)
+	velocity.x += velocity_to_add
 
 func accelerate(delta: float) -> void:
 	if is_inert:
@@ -177,6 +191,10 @@ func air_decelerate(delta: float) -> void:
 	
 	if (velocity.x == 0 or (old_velocity_direction + sign(velocity.x) == 0)):
 		velocity.x = 0
+		
+func wallslide_accelerate(delta: float) -> void:
+	var velocity_to_add = wallslide_acceleration * Vector2.DOWN.y * delta
+	velocity.y += velocity_to_add
 	
 func is_turning_around() -> bool:
 	return sign(velocity.x) + direction == 0 and not is_inert
@@ -237,7 +255,13 @@ func walljump_low_jump_fall(delta: float) -> void:
 	apply_gravity(delta, low_walljump_gravity)
 	
 func limit_fall_speed():
-	velocity.y = clamp(velocity.y, 0, max_fall_speed)
+	limit_vertical_velocity(0, max_fall_speed)
+	
+func limit_wallslide_speed():
+	limit_vertical_velocity(0, max_wallslide_speed)
+	
+func limit_vertical_velocity(min_speed: float, max_speed: float):
+	velocity.y = clamp(velocity.y, min_speed, max_speed)
 	
 func check_for_fast_fall_start():
 	if (sign(velocity.y) == Vector2.DOWN.y || not holding_jump):
@@ -251,14 +275,19 @@ func jump_with_force(force: float):
 	
 func jump() -> void:
 	jump_with_force(jump_force)
+	jumpBuffer.stop()
+	started_fast_fall = false
 	
 func backflip_jump() -> void:
 	jump_with_force(backflip_jump_force)
+	jumpBuffer.stop()
+	started_fast_fall = false
 	
 func land():
 	velocity.y = 0.1
 	is_on_ground = true
 	started_fast_fall = false
+	set_sprite_direction(velocity)
 
 func check_for_ground():
 	is_on_ground = is_on_floor()
@@ -269,12 +298,19 @@ func should_flip() -> bool:
 func flip():
 	sprite.flip_h = not sprite.flip_h
 	facing_right = not facing_right
+	
+func set_sprite_direction(dir: Vector2):
+	facing_right = dir.x >= 0
+	sprite.flip_h = not facing_right
 
 func has_buffered_jump() -> bool:
 	return jumpBuffer.time_left > 0
 	
 func has_coyote_time() -> bool:
 	return coyoteTime.time_left > 0 
+	
+func has_wall_coyote_time() -> bool:
+	return wall_coyote_time_timer.time_left > 0
 
 func update_jump_buffer():
 	if jump: jumpBuffer.start() 
@@ -285,21 +321,22 @@ func should_do_a_backflip() -> bool:
 func check_for_walljump(wall_normal: Vector2) -> bool:
 	return has_buffered_jump() and wall_normal != Vector2.ZERO
 	
-func get_wall_normal() -> Vector2:
-	if velocity.x == 0:
-		if test_move(transform, Vector2.LEFT):
-			return Vector2.RIGHT
+func get_wall_normal(distance: float) -> Vector2:
+	if test_move(transform, Vector2.LEFT * distance):
+		return Vector2.RIGHT
 			
-		if test_move(transform, Vector2.RIGHT):
-			return Vector2.LEFT
-			
-		return Vector2.ZERO
-		
-	if test_move(transform, Vector2(sign(velocity.x), 0)):
-		return Vector2(-sign(velocity.x), 0) 
+	if test_move(transform, Vector2.RIGHT * distance):
+		return Vector2.LEFT
 		
 	return Vector2.ZERO
 
 func walljump(wall_normal: Vector2):
 	jump_with_force(walljump_force)
-	velocity.x = start_walljump_speed * wall_normal.x
+	
+	wall_coyote_time_timer.stop()
+	jumpBuffer.stop()
+	started_fast_fall = false
+	
+	velocity.x = walljump_max_speed * wall_normal.x
+	last_wall_normal = wall_normal
+	set_sprite_direction(wall_normal)

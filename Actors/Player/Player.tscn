@@ -1,4 +1,4 @@
-[gd_scene load_steps=12 format=2]
+[gd_scene load_steps=13 format=2]
 
 [ext_resource path="res://Scripts/Player/Player.gd" type="Script" id=1]
 [ext_resource path="res://Sprites/Player/Test/cubiTest.png" type="Texture" id=2]
@@ -10,12 +10,14 @@
 [ext_resource path="res://Scripts/Player/StateMachine/PlayerStates/BackflipUp.gd" type="Script" id=8]
 [ext_resource path="res://Scripts/Player/StateMachine/PlayerStates/WalljumpUp.gd" type="Script" id=9]
 [ext_resource path="res://Scripts/Player/StateMachine/PlayerStates/WalljumpDown.gd" type="Script" id=10]
+[ext_resource path="res://Scripts/Player/StateMachine/PlayerStates/Wallslide.gd" type="Script" id=11]
 
 [sub_resource type="RectangleShape2D" id=1]
-extents = Vector2( 40, 56 )
+extents = Vector2( 39, 54 )
 
 [node name="Player" type="KinematicBody2D"]
 script = ExtResource( 1 )
+min_walljump_horizontal_distance = 384
 
 [node name="Collision" type="CollisionShape2D" parent="."]
 shape = SubResource( 1 )
@@ -48,6 +50,9 @@ script = ExtResource( 9 )
 [node name="WalljumpDown" type="Node" parent="StateMachine"]
 script = ExtResource( 10 )
 
+[node name="Wallslide" type="Node" parent="StateMachine"]
+script = ExtResource( 11 )
+
 [node name="JumpBuffer" type="Timer" parent="."]
 wait_time = 0.096
 one_shot = true
@@ -56,5 +61,6 @@ one_shot = true
 wait_time = 0.064
 one_shot = true
 
-[node name="WalljumpStartTimer" type="Timer" parent="."]
+[node name="WallCoyoteTime" type="Timer" parent="."]
+wait_time = 0.064
 one_shot = true

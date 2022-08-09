@@ -5,8 +5,7 @@ func _enter():
 	player.is_inert = false
 	player.started_fast_fall = false
 	
-	player.walljump_start_timer.wait_time = player.time_to_min_wall_jump
-	player.walljump_start_timer.start()
+	print("walljumped")
 
 func _update(delta: float):
 	player.update_input()
@@ -27,7 +26,7 @@ func _physics_update(delta: float):
 		state_machine.transition_to("WalljumpDown")
 		return 
 		
-	var wall_normal = player.get_wall_normal()
+	var wall_normal = player.get_wall_normal(player.wall_distance_tolerance)
 	if player.check_for_walljump(wall_normal):
 		player.walljump(wall_normal)
 		state_machine.transition_to("WalljumpUp")
